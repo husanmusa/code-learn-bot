@@ -1,0 +1,1 @@
+alter table lessons drop column if exists send_duration;

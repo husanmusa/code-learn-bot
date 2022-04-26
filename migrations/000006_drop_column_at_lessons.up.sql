@@ -1,0 +1,1 @@
+alter table lessons drop column if exists type_of_part;

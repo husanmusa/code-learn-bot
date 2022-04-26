@@ -1,0 +1,1 @@
+alter table lessons add column if not exists type_of_part varchar(24) default null;

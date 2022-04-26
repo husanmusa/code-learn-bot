@@ -31,6 +31,6 @@ func (s Service) ReadByLessonID(numberOfLesson int64) ([]structs.Lesson, error) 
 	return s.LessonStorage.ReadByLessonID(numberOfLesson)
 }
 
-func (s Service) Update(numberOfPart, typeOfPart int64, lesson *structs.Lesson) error {
-	return s.LessonStorage.Update(numberOfPart, typeOfPart, lesson)
+func (s Service) Update(numberOfPart int64, lesson *structs.Lesson) error {
+	return s.LessonStorage.Update(numberOfPart, lesson)
 }

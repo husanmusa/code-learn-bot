@@ -3,6 +3,7 @@ package bot
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/husanmusa/code-learn-bot/pkg/parser"
 	"github.com/husanmusa/code-learn-bot/pkg/structs"
 	"github.com/husanmusa/code-learn-bot/service/lesson"
@@ -16,11 +17,21 @@ import (
 const userCtxKey = "user"
 
 func handleStart(ctx tele.Context) error {
+	started = true
 	return ctx.Send(enterName)
 }
 
 func handlerGetName(userService user.Service) tele.HandlerFunc {
 	return func(ctx tele.Context) error {
+		if ctx.Message().Chat.ID == -571389424 {
+			if ctx.Message().IsReply() {
+				return handlerPaidReplyMessage(ctx)
+			} else if ctx.Message().IsForwarded() {
+				return handlerAddPaid(userService)(ctx)
+			} else {
+				return ctx.Send("Don't play", menu)
+			}
+		}
 		var (
 			_    = ctx.Sender()
 			text = ctx.Text()
@@ -34,9 +45,19 @@ func handlerGetName(userService user.Service) tele.HandlerFunc {
 		}
 		menu.Reply(
 			menu.Row(btnChoose),
+			menu.Row(btnCash),
 		)
+		if sendFeedback {
+			sendFeedback = false
+			return ctx.Send("Thank You for Feedback. Bye!!!👋")
+		}
 		if !sendingTask {
-			return ctx.Reply(textHello, menu)
+			if started {
+				started = false
+				return ctx.Reply(textHello, menu)
+			} else {
+				return nil
+			}
 		} else {
 			return handlerForwardMessage(userService)(ctx)
 		}
@@ -50,9 +71,23 @@ func handlerInfo(ctx tele.Context) error {
 	return ctx.Reply(texInfo, menu)
 }
 
-func handlerLessons(lessonService lesson.Service, userService user.Service) tele.HandlerFunc {
-	return func(ctx tele.Context) error {
+func handlerCasher(ctx tele.Context) error {
+	menu.Reply(
+		menu.Row(btnCheckPaid),
+	)
+	return ctx.Send(textGetPaid, menu)
+}
 
+func handlerCheckPaid(ctx tele.Context) error {
+	user := ctx.Get(userCtxKey).(*structs.User)
+	if user.IsPaid {
+		return ctx.Reply("DONE! You can learn ...", handlerInfo(ctx))
+	}
+	return handlerCasher(ctx)
+}
+
+func handlerLessons(bot *tele.Bot, lessonService lesson.Service, userService user.Service) tele.HandlerFunc {
+	return func(ctx tele.Context) error {
 		user := ctx.Get(userCtxKey).(*structs.User)
 		user, err := userService.ReadByChatID(user.ID)
 		var id = user.DoingLesson
@@ -60,7 +95,10 @@ func handlerLessons(lessonService lesson.Service, userService user.Service) tele
 		lessons, err := lessonService.ReadByLessonID(id)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				err = ctx.Reply(strconv.FormatInt(id, 10) + "-raqamli dars topilmadi")
+				menu.Reply(
+					menu.Row(btnSummary),
+				)
+				err = ctx.Reply(congratulate, menu)
 				if err != nil {
 				}
 				log.Println(err)
@@ -71,10 +109,17 @@ func handlerLessons(lessonService lesson.Service, userService user.Service) tele
 
 		messages, _ := parser.ParseLessonToMessage(lessons)
 		for _, message := range messages {
-			edit := Editable{strconv.FormatInt(int64(message.ID), 10), message.Chat.ID}
-			err = ctx.Forward(edit)
+			fmt.Printf("%+v\n%+v\n", message.Chat, *ctx.Chat())
+
+			var recip = Recip{strconv.FormatInt(ctx.Chat().ID, 10)}
+
+			mes, err := bot.Copy(recip, &message)
 			if err != nil {
-				log.Println("Error in Forward", err)
+				return err
+			}
+			log.Printf("%+v", mes)
+			if err != nil {
+				log.Println("Error in Forward Lesson Messages", err)
 			}
 		}
 
@@ -87,7 +132,7 @@ func handlerLessons(lessonService lesson.Service, userService user.Service) tele
 			menu.Row(btnTask),
 		)
 
-		return ctx.Send(parser.ParseTimeToMessage(user.LessonTime), menu)
+		return ctx.Send(parser.ParseTimeToMessage(user.DoingLesson, user.LessonTime, lessons[0].SendDuration, false), menu)
 	}
 }
 
@@ -96,40 +141,46 @@ func handleGetLessons(lessonService lesson.Service) tele.HandlerFunc {
 		msg := ctx.Message()
 
 		parsed, err := parser.ParseMessageToLesson(msg)
-
 		if err != nil {
-			log.Println(err)
-		}
-		err = lessonService.Store(&parsed)
-		if err != nil {
-			log.Println(err)
-			return err
-		}
+			if errors.Is(err, parser.ErrorLessonWrong) {
+				return err
+			} else if errors.Is(err, parser.ErrorLessonThanNeed) {
+				return err
+			} else {
+				log.Println(err)
+				return err
+			}
+		} else {
+			err = lessonService.Store(&parsed)
+			if err != nil {
 
-		return ctx.Reply("Added new lesson")
+				log.Println(err)
+				return err
+			}
+
+			return ctx.Reply("Added new lesson")
+		}
 	}
 }
 
-func handleTask(userService user.Service) tele.HandlerFunc {
+func handleTask(userService user.Service, lessonService lesson.Service) tele.HandlerFunc {
 	return func(ctx tele.Context) error {
 		user := ctx.Get(userCtxKey).(*structs.User)
 		user, err := userService.ReadByChatID(user.ID)
+		var id = user.DoingLesson
+		lessons, err := lessonService.ReadByLessonID(id)
 		if err != nil {
 			log.Println(err)
 		}
 		startedTime := time.Now().UTC().Add(time.Hour * 5).Sub(user.LessonTime)
-		duration, err := time.ParseDuration(taskTime)
+		duration, err := time.ParseDuration(lessons[0].SendDuration)
 		if err != nil {
 			log.Println(err)
 		}
 		if startedTime-duration < 0 {
-			return ctx.Reply(parser.ParseTimeToMessage(user.LessonTime))
+			fmt.Printf("%.5v s\n", duration-startedTime)
+			return ctx.Reply(parser.ParseTimeToMessage(user.DoingLesson, user.LessonTime, lessons[0].SendDuration, true))
 		} else {
-			//
-			//err = userService.Update(user.ID, user)
-			//if err != nil {
-			//	log.Println(err)
-			//}
 			sendingTask = true
 			return ctx.Reply(textSendTask)
 		}
@@ -145,7 +196,7 @@ func handlerForwardMessage(userService user.Service) tele.HandlerFunc {
 			log.Println(err)
 		}
 		sendingTask = false
-		var rcp tele.Recipient = Recipient{}
+		var rcp tele.Recipient = Recipient{user.IsPaid}
 
 		err = ctx.ForwardTo(rcp)
 		if err != nil {
@@ -158,9 +209,26 @@ func handlerForwardMessage(userService user.Service) tele.HandlerFunc {
 	}
 }
 
-func handlerNextLesson(lessonService lesson.Service, userService user.Service) tele.HandlerFunc {
+func handlerPaidReplyMessage(ctx tele.Context) error {
+	ctx.Message().Chat.ID = ctx.Message().ReplyTo.OriginalSender.ID
+	err := ctx.Send(ctx.Message().Text)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func handlerAddPaid(userService user.Service) tele.HandlerFunc {
 	return func(ctx tele.Context) error {
-		return handlerLessons(lessonService, userService)(ctx)
+		//user := ctx.Get(userCtxKey).(*structs.User)
+		err := userService.UpdatePaid(ctx.Message().OriginalSender.ID)
+		if err != nil {
+			log.Println(err)
+			return err
+		}
+
+		return nil
 	}
 }
 

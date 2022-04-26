@@ -62,20 +62,20 @@ func main() {
 	userService := user.NewService(userStorage.New(conDB))
 	lessonService := lesson.NewService(lessonStorage.New(conDB))
 
-	//go func() {
-	err = bot.Start(
-		context.Background(),
-		cfg.BotToken,
-		userService,
-		lessonService,
-	)
-	if err != nil {
-		log.Println(err)
-	}
-	//}()
+	go func() {
+		err = bot.Start(
+			context.Background(),
+			cfg.BotToken,
+			userService,
+			lessonService,
+		)
+		if err != nil {
+			log.Println(err)
+		}
+	}()
 	log.Printf("start listening and serving at %q\n", "8080")
 
-	err = http.ListenAndServe("8080", nil)
+	err = http.ListenAndServe(":8080", nil)
 	if err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}

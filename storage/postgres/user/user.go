@@ -65,6 +65,26 @@ func (s Storage) Update(chatID int64, user *structs.User) error {
 	return nil
 }
 
+func (s Storage) UpdatePaid(chatID int64) error {
+	query := `UPDATE users
+              SET
+			      is_paid=$1
+			  WHERE
+			 	  chat_id = $2`
+
+	_, err := s.DB.Exec(
+		query,
+		true,
+		chatID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s Storage) ReadByChatID(chatID int64) (*structs.User, error) {
 	var (
 		ld    sql.NullInt64
@@ -74,6 +94,7 @@ func (s Storage) ReadByChatID(chatID int64) (*structs.User, error) {
 			is_banned,
        		lesson_doing,
        		lesson_time,
+       		is_paid,
 			CASE WHEN input_name IS NULL THEN '' ELSE input_name END
 		 FROM
 			users
@@ -85,6 +106,7 @@ func (s Storage) ReadByChatID(chatID int64) (*structs.User, error) {
 		&user.IsBanned,
 		&ld,
 		&lt,
+		&user.IsPaid,
 		&user.InputName,
 	)
 	if ld.Valid {
@@ -108,6 +130,7 @@ func (s Storage) ReadMany() ([]*structs.User, error) {
 		users.chat_id,
 		users.is_banned,
 		users.lesson_doing,
+		users.is_paid,
 		CASE WHEN users.input_name IS NULL THEN '' ELSE users.input_name END
 	FROM
 		users
@@ -127,6 +150,7 @@ func (s Storage) ReadMany() ([]*structs.User, error) {
 			&user.ID,
 			&user.IsBanned,
 			&user.DoingLesson,
+			&user.IsPaid,
 			&user.InputName,
 		)
 

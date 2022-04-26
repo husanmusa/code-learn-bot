@@ -58,6 +58,10 @@ func (s Service) Update(chatID int64, user *structs.User) error {
 	return s.UserStorage.Update(chatID, user)
 }
 
+func (s Service) UpdatePaid(chatID int64) error {
+	return s.UserStorage.UpdatePaid(chatID)
+}
+
 func (s Service) IsErrUserBanned(err error) bool {
 	return errors.Is(errors.Unwrap(err), _errUserBanned)
 }

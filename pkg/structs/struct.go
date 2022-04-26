@@ -10,6 +10,7 @@ type User struct {
 	DoingLesson int64
 	LessonTime  time.Time
 	IsBanned    bool
+	IsPaid      bool
 }
 
 type Lesson struct {
@@ -18,5 +19,5 @@ type Lesson struct {
 	MessageId      int
 	NumberOfLesson int64
 	NumberOfPart   int64
-	TypeOfPart     string
+	SendDuration   string
 }
